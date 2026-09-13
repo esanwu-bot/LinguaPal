@@ -177,7 +177,7 @@ LinguaPal/
 │       │   └── shared/protocol.ts   # 前后端共享协议
 │       └── .teaching-agent/         # 会话数据（已 gitignore）
 ├── docs/                            # VitePress 教程站点（参考用，见下）
-├── public/                          # README 配图（联系方式 / 赞助二维码）
+├── public/                          # README 配图（运行截图）
 ├── specs/                           # 项目计划与工作日志
 ├── 阶段性测试指南.md                 # 当前功能点的测试清单
 ├── start_teaching_agent.bat/.ps1    # Windows 一键启动（会加载 .env.local）
@@ -256,48 +256,6 @@ LinguaPal 的 Agent 运行时参考了 [Pi Agent](https://github.com/earendil-wo
 > 另外，仓库根目录的 `vercel.json` 当前指向的是**教程站点**（`npm run docs:build`）——直接部署到 Vercel 部署的是文档，不是 LinguaPal 产品。
 
 ---
-
-## 联系我
-
-Hi，我是 Cell 细胞。可以扫码加我微信，备注 **Github** 就行。
-
-我正在做订阅制真人秀 **造物矩阵·BIP**：👉 [zwjz.flowus.cn](https://zwjz.flowus.cn)，欢迎订阅。
-
-社媒更新：👉 [X / Twitter @cellinlab](https://x.com/cellinlab)
-
-更多信息：👉 [Cell 的个人说明书](https://chaojizhizao.feishu.cn/wiki/Gbm8wMdS1itpk7kIVRlcN2WCnw)
-
-<table align="center">
-  <tr>
-    <td align="center" width="33%">
-      <img src="./public/wetouch/wechat.webp" alt="Cell 细胞微信二维码" width="200"><br>
-      <p align="center">扫码加微信</p>
-    </td>
-    <td align="center" width="33%">
-      <img src="./public/wetouch/wechat-channels.webp" alt="Cell 细胞微信视频号二维码" width="200"><br>
-      <p align="center">视频号</p>
-    </td>
-    <td align="center" width="33%">
-      <img src="./public/wetouch/wechat-official.webp" alt="Cell 细胞微信公众号二维码" width="200"><br>
-      <p align="center">公众号</p>
-    </td>
-  </tr>
-</table>
-
-## 赞助
-
-<table align="center">
-  <tr>
-    <td align="center" width="50%">
-      <img src="./public/sponsor/zfb.webp" alt="支付宝二维码" width="200"><br>
-      <p align="center">支付宝</p>
-    </td>
-    <td align="center" width="50%">
-      <img src="./public/sponsor/wx.webp" alt="微信赞赏二维码" width="200"><br>
-      <p align="center">微信赞赏</p>
-    </td>
-  </tr>
-</table>
 
 ## License
 
