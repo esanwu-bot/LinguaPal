@@ -2,8 +2,14 @@ node_modules/
 dist/
 .vitepress/cache/
 .vitepress/dist/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
 .playwright-cli/
 output/
 examples/teaching-agent/.teaching-agent/
 examples/teaching-agent/dist/
+examples/teaching-agent/workspace/notes/
 .vercel/
+.env
+.env.local
+.env.*.local
