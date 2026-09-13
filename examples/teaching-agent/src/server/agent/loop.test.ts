@@ -3,9 +3,31 @@ import { describe, test } from "node:test";
 import type { AssistantMessage, ToolResultMessage } from "../../shared/protocol";
 import { createAssistantMessage, createUserMessage, messageText, text } from "./message";
 import type { TeachingModel } from "./model";
-import { MockModel } from "./mockModel";
 import { runAgentLoop } from "./loop";
 import { ToolRegistry } from "./tools";
+
+/**
+ * loop 测试用的确定性模型：先发一个工具调用，拿到工具结果后用文本收尾。
+ * loop 的职责是推进状态机，不应该依赖 MockModel 的具体人设分支。
+ */
+function scriptedToolModel(
+  name: string,
+  args: Record<string, unknown>,
+  format: (result: ToolResultMessage) => string,
+): TeachingModel {
+  return {
+    async complete(input) {
+      const last = input.messages.at(-1);
+      if (last?.role === "toolResult") {
+        return createAssistantMessage([text(format(last))]);
+      }
+      return createAssistantMessage(
+        [{ type: "toolCall", id: `call_${name}`, name, arguments: args }],
+        "toolUse",
+      );
+    },
+  };
+}
 
 describe("runAgentLoop", () => {
   test("continues after a tool call and returns the final assistant message", async () => {
@@ -26,7 +48,7 @@ describe("runAgentLoop", () => {
       systemPrompt: "You are a teaching agent.",
       messages: [createUserMessage("列出工作区文件")],
       tools: toolRegistry.definitions(),
-      model: new MockModel(),
+      model: scriptedToolModel("list_files", { path: "." }, (result) => `files: ${messageText(result)}`),
       toolRegistry,
     });
 
@@ -51,7 +73,7 @@ describe("runAgentLoop", () => {
           parameters: { type: "object", properties: {} },
         },
       ],
-      model: new MockModel(),
+      model: scriptedToolModel("list_files", { path: "." }, (result) => messageText(result)),
       toolRegistry: new ToolRegistry(),
     });
 
@@ -122,7 +144,11 @@ describe("runAgentLoop", () => {
       systemPrompt: "You are a teaching agent.",
       messages: [createUserMessage("写一条 secret 笔记")],
       tools: toolRegistry.definitions(),
-      model: new MockModel(),
+      model: scriptedToolModel(
+        "write_note",
+        { fileName: "secret-note.md", content: "secret" },
+        (result) => messageText(result),
+      ),
       toolRegistry,
       beforeToolCall(call) {
         return { action: "block", reason: `blocked ${call.name}` };

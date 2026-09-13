@@ -1,101 +1,83 @@
-import type { AssistantMessage, ToolResultMessage } from "../../shared/protocol";
+import type { AgentMessage, AssistantMessage, ToolResultMessage } from "../../shared/protocol";
 import { createAssistantMessage, messageText, text } from "./message";
 import type { CompleteInput, TeachingModel } from "./model";
 
+/**
+ * LinguaPal 的离线模型（「小灵」降级版）。
+ *
+ * 没有配置 LLM Key、Key 失效或网络中断时，用它保证孩子仍然能继续玩：
+ * 无论孩子说什么，都先用一句简单英语回应，并调用 pronunciation_evaluate 给出评分，
+ * 拿到工具结果后再用一句英语收尾。行为完全确定，因此也适合作为 E2E 测试基准。
+ */
 export class MockModel implements TeachingModel {
   async complete(input: CompleteInput): Promise<AssistantMessage> {
     const last = input.messages[input.messages.length - 1];
-    if (!last) {
-      return createAssistantMessage([text("还没有上下文。")]);
+
+    // 工具结果已经回来，这一轮收尾，否则 loop 会一直带着 toolResult 转下去。
+    if (last?.role === "toolResult") {
+      return this.replyFromToolResult(last);
     }
 
-    if (last.role === "toolResult") {
-      return this.answerFromTool(last);
-    }
-
-    if (last.role !== "user") {
-      return createAssistantMessage([text("当前没有新的用户目标，我会等待下一条输入。")]);
-    }
-
-    const userText = messageText(last).toLowerCase();
-    if (this.includesAny(userText, ["列出", "文件列表", "list", "files"])) {
-      return createAssistantMessage(
-        [
-          {
-            type: "toolCall",
-            id: `call_${Date.now()}_list`,
-            name: "list_files",
-            arguments: { path: "." },
-          },
-        ],
-        "toolUse",
-      );
-    }
-
-    if (this.includesAny(userText, ["读取", "read", "打开", "查看"])) {
-      return createAssistantMessage(
-        [
-          {
-            type: "toolCall",
-            id: `call_${Date.now()}_read`,
-            name: "read_file",
-            arguments: { path: this.pickFile(userText) },
-          },
-        ],
-        "toolUse",
-      );
-    }
-
-    if (this.includesAny(userText, ["写", "笔记", "note", "保存"])) {
-      const fileName = this.includesAny(userText, ["secret", "秘密"]) ? "secret-note.md" : "agent-loop-note.md";
-      return createAssistantMessage(
-        [
-          {
-            type: "toolCall",
-            id: `call_${Date.now()}_write`,
-            name: "write_note",
-            arguments: {
-              fileName,
-              content:
-                "Agent Loop = context -> model -> tool execution -> tool result -> next model request.",
-            },
-          },
-        ],
-        "toolUse",
-      );
-    }
-
-    return createAssistantMessage([
-      text(
-        "教学版 Agent 收到你的问题。当前 MockModel 会在你提到“列出文件”“读取文件”“写笔记”时调用工具；其他问题会直接回答。",
-      ),
-    ]);
+    // 首轮和新一轮对话都固定触发发音评估，保证孩子每次开口都能看到反馈。
+    return createAssistantMessage(
+      [
+        text("That's great! 🦊 Can you say it again?"),
+        {
+          type: "toolCall",
+          id: `mock_${Date.now()}_pronunciation`,
+          name: "pronunciation_evaluate",
+          arguments: { transcript: pickTranscript(last) },
+        },
+      ],
+      "toolUse",
+    );
   }
 
-  private answerFromTool(toolResult: ToolResultMessage): AssistantMessage {
-    const output = messageText(toolResult);
+  private replyFromToolResult(toolResult: ToolResultMessage): AssistantMessage {
     if (toolResult.isError) {
-      return createAssistantMessage([text(`工具 ${toolResult.toolName} 执行失败：${output}`)], "stop");
+      return createAssistantMessage([text("No worries! Let's try one more time!")]);
     }
-    if (toolResult.toolName === "list_files") {
-      return createAssistantMessage([text(`我已经列出工作区文件：\n${output}`)]);
+
+    if (toolResult.toolName === "pronunciation_evaluate") {
+      const accuracy = readAccuracy(toolResult);
+      return createAssistantMessage([
+        text(
+          accuracy === undefined
+            ? "Nice job! Let's keep going!"
+            : `Nice job! Your score is ${accuracy}. Let's keep going!`,
+        ),
+      ]);
     }
-    if (toolResult.toolName === "read_file") {
-      return createAssistantMessage([text(`我读取到了文件内容。关键内容如下：\n${output}`)]);
-    }
-    if (toolResult.toolName === "write_note") {
-      return createAssistantMessage([text(`笔记已经写入：${output}`)]);
-    }
-    return createAssistantMessage([text(`工具结果：${output}`)]);
+
+    return createAssistantMessage([text("Good job! Let's practice again!")]);
+  }
+}
+
+/** 只保留用户消息里的英文单词；孩子说中文或什么都没说时兜底为 "Hello!"。 */
+function pickTranscript(message: AgentMessage | undefined): string {
+  if (!message || message.role !== "user") {
+    return "Hello!";
   }
 
-  private includesAny(input: string, keywords: string[]): boolean {
-    return keywords.some((keyword) => input.includes(keyword));
+  const english = messageText(message)
+    .split(/\s+/)
+    .filter((word) => /^[A-Za-z][A-Za-z'.,!?]*$/.test(word))
+    .join(" ");
+
+  return english || "Hello!";
+}
+
+/** 评分放在 toolResult.details，兜底再解析一次 content 里的 JSON。 */
+function readAccuracy(toolResult: ToolResultMessage): number | undefined {
+  const details = toolResult.details as { accuracy?: unknown } | undefined;
+  if (details && typeof details.accuracy === "number") {
+    return details.accuracy;
   }
 
-  private pickFile(input: string): string {
-    if (input.includes("agent")) return "agent-notes.md";
-    if (input.includes("package")) return "package.json";
-    return "README.md";
+  try {
+    const parsed = JSON.parse(messageText(toolResult)) as { accuracy?: unknown };
+    return typeof parsed.accuracy === "number" ? parsed.accuracy : undefined;
+  } catch {
+    return undefined;
   }
 }
