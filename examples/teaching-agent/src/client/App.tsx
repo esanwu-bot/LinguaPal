@@ -1,5 +1,5 @@
 import { ArrowUp, FileText, GitBranch, Hammer, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentEvent,
   AgentMessage,
@@ -39,7 +39,7 @@ const STREAM_EVENT_TYPES = [
 
 export function App() {
   const [session, setSession] = useState<SessionResponse>(EMPTY_SESSION);
-  const [input, setInput] = useState("列出工作区文件");
+  const [input, setInput] = useState("I like dogs!");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -167,8 +167,8 @@ export function App() {
       <section className="main-panel">
         <header className="topbar">
           <div>
-            <p className="eyeline">Pi-style teaching runtime</p>
-            <h1>Teaching Agent</h1>
+            <p className="eyeline">英语陪练 · Powered by Pi-style Agent</p>
+            <h1>🦊 LinguaPal · 小灵</h1>
           </div>
           <div className="toolbar">
             <button type="button" className="icon-button" aria-label="刷新会话" onClick={refresh} disabled={isLoading}>
@@ -184,7 +184,7 @@ export function App() {
           {session.messages.length === 0 ? (
             <div className="empty-state">
               <Sparkles size={28} />
-              <p>输入一个目标，观察模型如何决定直接回答或调用工具。</p>
+              <p>Hi! 我是小灵。用英语和我聊聊吧，比如：I like dogs!</p>
             </div>
           ) : (
             session.messages.map((message, index) => <MessageCard key={`${message.timestamp}-${index}`} message={message} />)
@@ -195,7 +195,7 @@ export function App() {
           <input
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="试试：读取 agent-notes.md"
+            placeholder="试试：I like dogs! / What does adopt mean?"
             disabled={isLoading}
           />
           <button type="submit" className="send-button" aria-label="发送" disabled={isLoading || !input.trim()}>
@@ -303,15 +303,26 @@ function MessageCard({ message }: { message: AgentMessage }) {
             block.type === "toolCall" ? (
               <ToolCallBlock key={index} block={block} />
             ) : (
-              <p key={index}>{block.text}</p>
+              <p key={index}>{renderRichText(block.text)}</p>
             ),
           )
         ) : (
-          message.content.map((block, index) => <p key={index}>{(block as TextContent).text}</p>)
+          message.content.map((block, index) => <p key={index}>{renderRichText((block as TextContent).text)}</p>)
         )}
       </div>
     </article>
   );
+}
+
+/** 轻量 Markdown：只把 **加粗** 渲染成 <strong>，其余保持纯文本。 */
+function renderRichText(value: string) {
+  return value.split(/(\*\*[^*]+\*\*)/g).map((part, index) => {
+    const bold = /^\*\*([^*]+)\*\*$/.exec(part);
+    if (bold) {
+      return <strong key={index}>{bold[1]}</strong>;
+    }
+    return <Fragment key={index}>{part}</Fragment>;
+  });
 }
 
 function ToolCallBlock({ block }: { block: ToolCallContent }) {

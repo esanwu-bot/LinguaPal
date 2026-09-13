@@ -6,27 +6,32 @@ import type { BeforeToolCall, ToolDecision } from "./agent/loop";
 import { runAgentLoop } from "./agent/loop";
 import { createUserMessage } from "./agent/message";
 import { MockModel } from "./agent/mockModel";
+import { ENGLISH_TUTOR_SYSTEM_PROMPT } from "./agent/prompts";
+import { RealModel } from "./agent/realModel";
 import { JsonlSessionStore } from "./agent/sessionStore";
-import { createToolRegistry } from "./agent/tools";
+import { createTutorToolRegistry, isMasteryLevel, normalizeMasteryLevel } from "./agent/tutorTools";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4317);
 const projectRoot = process.cwd();
-const workspaceRoot = resolve(projectRoot, "workspace");
 const sessionFile = resolve(projectRoot, ".teaching-agent/session.jsonl");
 
 const store = new JsonlSessionStore(sessionFile, projectRoot);
-const model = new MockModel();
-const toolRegistry = createToolRegistry(workspaceRoot);
+const model = createModel();
+const toolRegistry = createTutorToolRegistry();
+
+function createModel() {
+  if (process.env.CW_AGENT_LLM_KEY || process.env.OPENAI_API_KEY) {
+    console.log("[model] using RealModel with", process.env.CW_AGENT_LLM_MODEL || process.env.OPENAI_MODEL || "default model");
+    return new RealModel();
+  }
+  console.log("[model] using MockModel (no LLM key configured)");
+  return new MockModel();
+}
+
 const eventLog: AgentEvent[] = [];
 const runs = new Map<string, RunRecord>();
 let activeRun: Promise<void> | undefined;
-
-const systemPrompt = [
-  "你是 Teaching Agent，一个用于解释 Pi Agent 核心机制的教学版 Agent。",
-  "你可以使用工具观察安全工作区，也可以直接回答概念问题。",
-  "当工具返回结果后，必须基于工具结果继续回答用户。",
-].join("\n");
 
 app.use(express.json({ limit: "1mb" }));
 
@@ -175,7 +180,7 @@ async function executePrompt(input: string, onEvent?: (event: AgentEvent) => voi
   }
 
   const result = await runAgentLoop({
-    systemPrompt,
+    systemPrompt: ENGLISH_TUTOR_SYSTEM_PROMPT,
     messages: store.buildContext(),
     tools: toolRegistry.definitions(),
     model,
@@ -190,15 +195,21 @@ async function executePrompt(input: string, onEvent?: (event: AgentEvent) => voi
 }
 
 function beforeToolCall(call: Parameters<BeforeToolCall>[0]): ToolDecision {
-  if (call.name === "write_note") {
-    const fileName = typeof call.arguments.fileName === "string" ? call.arguments.fileName : "";
-    if (/secret|秘密/i.test(fileName)) {
-      return { action: "block", reason: "教学版权限策略：不允许写入包含 secret/秘密 的笔记文件。" };
-    }
+  // 掌握等级必须是 0-5 的整数，否则改写成合法值再执行。
+  if (call.name === "vocabulary_track" && !isMasteryLevel(call.arguments.masteryLevel)) {
+    return {
+      action: "rewrite",
+      args: { ...call.arguments, masteryLevel: normalizeMasteryLevel(call.arguments.masteryLevel) },
+      reason: "把掌握等级规范为 0-5 的整数。",
+    };
   }
 
-  if (call.name === "list_files" && typeof call.arguments.path !== "string") {
-    return { action: "rewrite", args: { ...call.arguments, path: "." }, reason: "补齐默认目录参数。" };
+  // 没有英文内容就无法评估发音，直接拦截并让模型重新引导孩子开口。
+  if (call.name === "pronunciation_evaluate") {
+    const transcript = call.arguments.transcript;
+    if (typeof transcript !== "string" || !transcript.trim()) {
+      return { action: "block", reason: "缺少待评估的英文内容，请先让孩子用英语说一句。" };
+    }
   }
 
   return { action: "allow" };

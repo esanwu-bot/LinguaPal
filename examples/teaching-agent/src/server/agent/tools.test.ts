@@ -15,8 +15,10 @@ test("list_files and read_file operate inside the safe workspace", async (t) => 
 
   const registry = createToolRegistry(root);
   const listResult = await registry.execute("list_files", { path: "." });
-  assert.match(messageText(listResult), /README\.md/);
-  assert.match(messageText(listResult), /src\/app\.ts/);
+  // Windows 下 relative() 返回反斜杠，断言前统一成正斜杠，保证跨平台一致。
+  const listed = messageText(listResult).replace(/\\/g, "/");
+  assert.match(listed, /README\.md/);
+  assert.match(listed, /src\/app\.ts/);
 
   const readResult = await registry.execute("read_file", { path: "README.md" });
   assert.equal(messageText(readResult), "hello agent");
